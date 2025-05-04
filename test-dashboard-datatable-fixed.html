@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PI Dashboard - Test Version</title>
+<!-- Bootstrap CSS -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css" rel="stylesheet"/>
+<!-- DataTables CSS -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/datatables.net-bs4/1.13.4/dataTables.bootstrap4.min.css" rel="stylesheet"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/datatables.net-buttons-bs4/2.3.6/buttons.bootstrap4.min.css" rel="stylesheet"/>
+<style>
+        .loading {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .group-header {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .dashboard-container {
+            padding: 20px;
+        }
+        .filter-row {
+            margin-bottom: 20px;
+        }
+        .test-controls {
+            background-color: #f0f0f0;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+<div class="container-fluid dashboard-container">
+<h1 class="mb-4">PI Dashboard - Test Version</h1>
+<div class="test-controls">
+<h4>Test Controls</h4>
+<p>This version includes sample data for testing. The mock data includes:</p>
+<ul>
+<li>3 PIs: 2025.01, 2025.02, 2025.03</li>
+<li>4 Teams: TITANS, SPARTANS, VIKINGS, WARRIORS (not all teams have data for all PIs)</li>
+<li>Varied number of tasks per team with randomized statuses, priorities, etc.</li>
+</ul>
+<button class="btn btn-warning" id="useMockData">Use Mock Data</button>
+<button class="btn btn-secondary ml-2" id="useRealData">Use Real SharePoint (if available)</button>
+</div>
+<div class="row filter-row">
+<div class="col-md-4">
+<div class="form-group">
+<label for="piSelector">Select PI:</label>
+<select class="form-control" id="piSelector">
+<option value="">Select a PI</option>
+</select>
+</div>
+</div>
+<div class="col-md-4">
+<div class="form-group">
+<label for="groupBySelector">Group By:</label>
+<select class="form-control" id="groupBySelector">
+<option value="">No Grouping</option>
+</select>
+</div>
+</div>
+<div class="col-md-4 d-flex align-items-end">
+<button class="btn btn-primary" id="refreshBtn">Refresh Data</button>
+</div>
+</div>
+<div class="loading" id="loadingIndicator" style="display: none;">
+<div class="spinner-border text-primary" role="status">
+<span class="sr-only">Loading...</span>
+</div>
+</div>
+<div class="table-responsive">
+<table class="table table-striped table-bordered" id="piDataTable" style="width:100%">
+<thead>
+<tr>
+<!-- Headers will be dynamically added -->
+</tr>
+</thead>
+<tbody>
+<!-- Data will be dynamically added -->
+</tbody>
+</table>
+</div>
+</div>
+<!-- jQuery, Bootstrap, and DataTables JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables.net/1.13.4/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables.net-bs4/1.13.4/dataTables.bootstrap4.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables.net-buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables.net-buttons-bs4/2.3.6/js/buttons.bootstrap4.min.js"></script>
+<!-- PnPjs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sp-pnp-js/1.3.9/pnp.min.js"></script>
+<!-- Sample data generator -->
+<script>
+        // Mock SharePoint PnP library
+        const mockPnP = (function() {
+            // Sample data for testing
+            const testData = {
+                lists: [
+                    { Title: "Pi_2025.01_TITANS", Id: "list-1" },
+                    { Title: "Pi_2025.01_SPARTANS", Id: "list-2" },
+                    { Title: "Pi_2025.01_VIKINGS", Id: "list-3" },
+                    { Title: "Pi_2025.02_TITANS", Id: "list-4" },
+                    { Title: "Pi_2025.02_SPARTANS", Id: "list-5" },
+                    { Title: "Pi_2025.02_WARRIORS", Id: "list-6" },
+                    { Title: "Pi_2025.03_TITANS", Id: "list-7" },
+                    { Title: "Pi_2025.03_SPARTANS", Id: "list-8" },
+                    { Title: "Pi_2025.03_VIKINGS", Id: "list-9" },
+                    { Title: "OtherList", Id: "list-10" },
+                ],
+                listItems: {}
+            };
+
+            // Helper function to generate test items for a team
+            function generateItemsForTeam(teamName, piValue, count) {
+                const items = [];
+                const statusOptions = ["Not Started", "In Progress", "Blocked", "Completed"];
+                const priorityOptions = ["High", "Medium", "Low"];
+                const assignedToOptions = ["John Smith", "Jane Doe", "Mark Johnson", "Sarah Williams", "Robert Brown"];
+                
+                for (let i = 1; i <= count; i++) {
+                    const randomStatus = statusOptions[Math.floor(Math.random() * statusOptions.length)];
+                    const randomPriority = priorityOptions[Math.floor(Math.random() * priorityOptions.length)];
+                    const randomAssignedTo = assignedToOptions[Math.floor(Math.random() * assignedToOptions.length)];
+                    
+                    // Calculate a date between now and 3 months from now
+                    const today = new Date();
+                    const futureDate = new Date();
+                    futureDate.setMonth(today.getMonth() + 3);
+                    const randomDate = new Date(today.getTime() + Math.random() * (futureDate.getTime() - today.getTime()));
+                    
+                    items.push({
+                        Id: `${teamName}-${piValue}-${i}`,
+                        Title: `Task ${i} for ${teamName} PI ${piValue}`,
+                        Team: teamName,
+                        Status: randomStatus,
+                        Priority: randomPriority,
+                        DueDate: randomDate.toISOString(),
+                        AssignedTo: randomAssignedTo,
+                        Description: `This is a sample task description for ${teamName} team during PI ${piValue}. Item ${i} of ${count}.`
+                    });
+                }
+                
+                return items;
+            }
+
+            // Generate test data for all lists
+            testData.listItems["Pi_2025.01_TITANS"] = generateItemsForTeam("TITANS", "2025.01", 15);
+            testData.listItems["Pi_2025.01_SPARTANS"] = generateItemsForTeam("SPARTANS", "2025.01", 12);
+            testData.listItems["Pi_2025.01_VIKINGS"] = generateItemsForTeam("VIKINGS", "2025.01", 10);
+            testData.listItems["Pi_2025.02_TITANS"] = generateItemsForTeam("TITANS", "2025.02", 18);
+            testData.listItems["Pi_2025.02_SPARTANS"] = generateItemsForTeam("SPARTANS", "2025.02", 14);
+            testData.listItems["Pi_2025.02_WARRIORS"] = generateItemsForTeam("WARRIORS", "2025.02", 8);
+            testData.listItems["Pi_2025.03_TITANS"] = generateItemsForTeam("TITANS", "2025.03", 20);
+            testData.listItems["Pi_2025.03_SPARTANS"] = generateItemsForTeam("SPARTANS", "2025.03", 16);
+            testData.listItems["Pi_2025.03_VIKINGS"] = generateItemsForTeam("VIKINGS", "2025.03", 13);
+
+            return {
+                setup: function(config) {
+                    console.log("Mock PnP setup with config:", config);
+                },
+                sp: {
+                    web: {
+                        lists: {
+                            get: function() {
+                                console.log("Mock PnP: Getting all lists");
+                                return Promise.resolve(testData.lists);
+                            },
+                            getByTitle: function(title) {
+                                console.log(`Mock PnP: Getting list by title: ${title}`);
+                                return {
+                                    items: {
+                                        select: function() {
+                                            return {
+                                                get: function() {
+                                                    console.log(`Mock PnP: Getting items from list: ${title}`);
+                                                    if (testData.listItems[title]) {
+                                                        return Promise.resolve(testData.listItems[title]);
+                                                    } else {
+                                                        return Promise.reject(`List ${title} not found`);
+                                                    }
+                                                }
+                                            };
+                                        }
+                                    }
+                                };
+                            }
+                        }
+                    }
+                }
+            };
+        })();
+    </script>
+<!-- Dashboard code -->
+<script>
+        // Configuration
+        const CONFIG = {
+            // List prefix formats
+            listPrefix: 'Pi',
+            // Columns that can be used for grouping
+            groupableColumns: ['Team', 'Status', 'Priority', 'AssignedTo'],
+            // Columns to display in the DataTable
+            displayColumns: ['Title', 'Team', 'Status', 'Priority', 'DueDate', 'AssignedTo', 'Description']
+        };
+        
+        // DataTable instance
+        let dataTable = null;
+        // Flag to track if we're using mock data
+        let usingMockData = false;
+        // Store original PnP reference
+        let originalPnP = null;
+        
+        // Initialize the application when the document is ready
+        $(document).ready(function() {
+            // Save original PnP reference
+            originalPnP = $pnp;
+            
+            // Set up test control buttons
+            $("#useMockData").on("click", function() {
+                useMockData();
+            });
+            
+            $("#useRealData").on("click", function() {
+                useRealData();
+            });
+            
+            // By default, use mock data
+            useMockData();
+        });
+        
+        function useMockData() {
+            usingMockData = true;
+            $pnp = mockPnP;
+            $("#useMockData").addClass("btn-success").removeClass("btn-warning");
+            $("#useRealData").addClass("btn-secondary").removeClass("btn-success");
+            initializeDashboard();
+        }
+        
+        function useRealData() {
+            if (originalPnP) {
+                usingMockData = false;
+                $pnp = originalPnP;
+                $("#useRealData").addClass("btn-success").removeClass("btn-secondary");
+                $("#useMockData").addClass("btn-warning").removeClass("btn-success");
+                initializeDashboard();
+            } else {
+                alert("Original PnP reference not found. Using mock data instead.");
+            }
+        }
+        
+        function initializeDashboard() {
+            // Clear current state
+            clearDataTable();
+            $("#piSelector").empty().append('<option value="">Select a PI</option>');
+            $("#groupBySelector").empty().append('<option value="">No Grouping</option>');
+            
+            // Initialize SharePoint connection
+            initializeSharePoint();
+            
+            // Populate groupBy selector
+            populateGroupBySelector();
+            
+            // Set up event handlers
+            setupEventHandlers();
+            
+            // Discover available PIs
+            discoverAvailablePIs();
+        }
+        
+        function initializeSharePoint() {
+            // Initialize PnP JS
+            $pnp.setup({
+                sp: {
+                    headers: {
+                        "Accept": "application/json;odata=verbose"
+                    }
+                }
+            });
+        }
+        
+        // Find all lists that match the PI pattern
+        function findPILists(piValue) {
+            const piPattern = `${CONFIG.listPrefix}_${piValue}_`;
+            
+            return $pnp.sp.web.lists
+                .get()
+                .then(lists => {
+                    // Filter lists that match the pattern
+                    return lists.filter(list => list.Title.startsWith(piPattern));
+                });
+        }
+        
+        // Auto-discover available PIs from SharePoint lists
+        function discoverAvailablePIs() {
+            showLoading(true);
+            
+            $pnp.sp.web.lists
+                .get()
+                .then(lists => {
+                    // Find all lists that start with the PI prefix
+                    const piLists = lists.filter(list => list.Title.startsWith(`${CONFIG.listPrefix}_`));
+                    
+                    // Extract unique PI values from list titles
+                    const piValues = new Set();
+                    
+                    piLists.forEach(list => {
+                        // Extract PI value from list title (format: Pi_yyyy.mm_TEAMNAME)
+                        const parts = list.Title.split('_');
+                        if (parts.length >= 2) {
+                            piValues.add(parts[1]);
+                        }
+                    });
+                    
+                    // Clear and repopulate PI selector
+                    const piSelector = $('#piSelector');
+                    piSelector.empty();
+                    piSelector.append('<option value="">Select a PI</option>');
+                    
+                    // Sort PI values by date (assuming yyyy.mm format)
+                    const sortedPIValues = Array.from(piValues).sort((a, b) => {
+                        return a.localeCompare(b);
+                    });
+                    
+                    // Add PI options to the dropdown
+                    sortedPIValues.forEach(piValue => {
+                        piSelector.append(`<option value="${piValue}">${piValue}</option>`);
+                    });
+                    
+                    console.log(`Discovered ${sortedPIValues.length} PIs:`, sortedPIValues);
+                })
+                .catch(error => {
+                    console.error('Error discovering PIs:', error);
+                })
+                .finally(() => {
+                    showLoading(false);
+                });
+        }
+        
+        function populateGroupBySelector() {
+            const groupBySelector = $('#groupBySelector');
+            
+            // Add groupable columns to the dropdown
+            CONFIG.groupableColumns.forEach(column => {
+                groupBySelector.append(`<option value="${column}">${column}</option>`);
+            });
+        }
+        
+        function setupEventHandlers() {
+            // PI selector change event
+            $('#piSelector').off('change').on('change', function() {
+                const selectedPI = $(this).val();
+                if (selectedPI) {
+                    loadPIData(selectedPI);
+                } else {
+                    // Clear table if no PI is selected
+                    clearDataTable();
+                }
+            });
+            
+            // Group by selector change event
+            $('#groupBySelector').off('change').on('change', function() {
+                applyGrouping($(this).val());
+            });
+            
+            // Refresh button click event
+            $('#refreshBtn').off('click').on('click', function() {
+                const selectedPI = $('#piSelector').val();
+                if (selectedPI) {
+                    loadPIData(selectedPI);
+                }
+            });
+        }
+        
+        function loadPIData(piValue) {
+            showLoading(true);
+            
+            // First, find all lists that match the PI pattern
+            findPILists(piValue)
+                .then(teamLists => {
+                    if (teamLists.length === 0) {
+                        alert(`No lists found for PI ${piValue}`);
+                        showLoading(false);
+                        return;
+                    }
+                    
+                    console.log(`Found ${teamLists.length} lists for PI ${piValue}:`, teamLists);
+                    
+                    // Get data from all matching lists
+                    const promises = teamLists.map(listInfo => {
+                        return getListData(listInfo.Title)
+                            .then(items => {
+                                // Extract team name from list title
+                                const teamName = listInfo.Title.split('_')[2];
+                                
+                                // Add team name to each item if not already there
+                                return items.map(item => {
+                                    if (!item.Team) {
+                                        item.Team = teamName;
+                                    }
+                                    return item;
+                                });
+                            })
+                            .catch(error => {
+                                console.error(`Error loading data from list ${listInfo.Title}:`, error);
+                                return []; // Return empty array on error to not break the Promise.all
+                            });
+                    });
+                    
+                    // Combine all data when all promises resolve
+                    return Promise.all(promises);
+                })
+                .then(results => {
+                    if (!results || results.length === 0) return;
+                    
+                    // Flatten array of arrays
+                    const combinedData = [].concat(...results);
+                    // Display the data
+                    displayData(combinedData);
+                    // Apply current grouping
+                    applyGrouping($('#groupBySelector').val());
+                })
+                .catch(error => {
+                    console.error('Error loading PI data:', error);
+                    alert('Error loading data. Please check console for details.');
+                })
+                .finally(() => {
+                    showLoading(false);
+                });
+        }
+        
+        function getListData(listName) {
+            return $pnp.sp.web.lists.getByTitle(listName).items
+                .select(CONFIG.displayColumns.join(','))
+                .get()
+                .then(items => {
+                    // Process and format data as needed
+                    return items.map(item => {
+                        // Format dates
+                        if (item.DueDate) {
+                            item.DueDate = new Date(item.DueDate).toLocaleDateString();
+                        }
+                        
+                        // Handle person fields (like AssignedTo in SharePoint)
+                        if (item.AssignedTo && item.AssignedTo.Title) {
+                            item.AssignedTo = item.AssignedTo.Title;
+                        }
+                        
+                        return item;
+                    });
+                });
+        }
+        
+        function displayData(data) {
+            // Clear existing table
+            clearDataTable();
+            
+            // If there's no data, just return
+            if (!data || data.length === 0) {
+                return;
+            }
+            
+            // Set up table headers
+            const thead = $('#piDataTable thead tr');
+            thead.empty();
+            
+            CONFIG.displayColumns.forEach(column => {
+                thead.append(`<th>${column}</th>`);
+            });
+            
+            // Initialize DataTable
+            dataTable = $('#piDataTable').DataTable({
+                data: data,
+                columns: CONFIG.displayColumns.map(column => {
+                    return { data: column, title: column };
+                }),
+                dom: 'Bfrtip',
+                buttons: [
+                    'copy', 'excel', 'csv', 'pdf'
+                ],
+                pageLength: 25,
+                responsive: true
+            });
+        }
+        
+        function clearDataTable() {
+            // Destroy existing DataTable instance if it exists
+            if (dataTable) {
+                dataTable.destroy();
+                dataTable = null;
+            }
+            
+            // Clear table HTML
+            $('#piDataTable thead tr').empty();
+            $('#piDataTable tbody').empty();
+        }
+        
+        function applyGrouping(groupByColumn) {
+            // If no data or no grouping selected, return
+            if (!dataTable || !groupByColumn) {
+                return;
+            }
+            
+            // Destroy current DataTable
+            const currentData = dataTable.data().toArray();
+            dataTable.destroy();
+            
+            // Recreate with grouping
+            const columnIndex = CONFIG.displayColumns.indexOf(groupByColumn);
+            
+            if (columnIndex !== -1) {
+                dataTable = $('#piDataTable').DataTable({
+                    data: currentData,
+                    columns: CONFIG.displayColumns.map(column => {
+                        return { data: column, title: column };
+                    }),
+                    dom: 'Bfrtip',
+                    buttons: [
+                        'copy', 'excel', 'csv', 'pdf'
+                    ],
+                    pageLength: 25,
+                    responsive: true,
+                    drawCallback: function(settings) {
+                        if (groupByColumn) {
+                            let api = this.api();
+                            let rows = api.rows({ page: 'current' }).nodes();
+                            let last = null;
+                            
+                            api.column(columnIndex, { page: 'current' }).data().each(function(group, i) {
+                                if (last !== group) {
+                                    $(rows).eq(i).before(
+                                        `<tr class="group-header"><td colspan="${CONFIG.displayColumns.length}">${groupByColumn}: ${group || 'N/A'}</td></tr>`
+                                    );
+                                    last = group;
+                                }
+                            });
+                        }
+                    },
+                    order: [[columnIndex, 'asc']]
+                });
+                
+                // Add click event for group headers
+                $('#piDataTable tbody').on('click', 'tr.group-header', function() {
+                    let currentOrder = dataTable.order()[0];
+                    if (currentOrder[0] === columnIndex && currentOrder[1] === 'asc') {
+                        dataTable.order([columnIndex, 'desc']).draw();
+                    } else {
+                        dataTable.order([columnIndex, 'asc']).draw();
+                    }
+                });
+            } else {
+                // Recreate without grouping if column not found
+                dataTable = $('#piDataTable').DataTable({
+                    data: currentData,
+                    columns: CONFIG.displayColumns.map(column => {
+                        return { data: column, title: column };
+                    }),
+                    dom: 'Bfrtip',
+                    buttons: [
+                        'copy', 'excel', 'csv', 'pdf'
+                    ],
+                    pageLength: 25,
+                    responsive: true
+                });
+            }
+        }
+        
+        function showLoading(show) {
+            if (show) {
+                $('#loadingIndicator').show();
+            } else {
+                $('#loadingIndicator').hide();
+            }
+        }
+    </script>
+</body>
+</html>
